@@ -13,6 +13,7 @@ async function handleRequest(request) {
     }
 
     const filteredLines = []
+    const errors = []
 
     for (const targetUrl of targetUrls) {
         try {
@@ -22,8 +23,12 @@ async function handleRequest(request) {
             const filtered = await filterStream(reader, decoder, regex)
             filteredLines.push(...filtered)
         } catch (error) {
-            return new Response(`Error: ${error.message}`, { status: 500 })
+            errors.push(`Error fetching ${targetUrl}: ${error.message}`)
         }
+    }
+
+    if (errors.length > 0) {
+        return new Response(errors.join('\n'), { status: 500 })
     }
 
     return new Response(filteredLines.join('\n'), { status: 200 })
@@ -32,8 +37,6 @@ async function handleRequest(request) {
 async function filterStream(reader, decoder, regex) {
     const filteredLines = []
     let partialLine = ''
-    let isManagedConfig = false
-    let managedConfigLines = []
 
     while (true) {
         const { done, value } = await reader.read()
@@ -48,19 +51,15 @@ async function filterStream(reader, decoder, regex) {
         if (lines.length > 1) {
             lines[0] = partialLine + lines[0]
             partialLine = lines.pop()
-            handleLines(lines, managedConfigLines, filteredLines, regex)
         } else {
             partialLine += lines[0]
         }
+        
+        handleLines(lines, filteredLines, regex)
     }
 
     if (partialLine !== '') {
-        handleLines([partialLine], managedConfigLines, filteredLines, regex)
-    }
-
-    if (managedConfigLines.length > 0) {
-        const filtered = filterLines(managedConfigLines, regex)
-        filteredLines.push(...filtered)
+        handleLines([partialLine], filteredLines, regex)
     }
 
     return filteredLines
@@ -93,18 +92,14 @@ function findProxyGroupIndices(lines) {
     return [proxyIndex, groupIndex]
 }
 
-function handleLines(lines, managedConfigLines, filteredLines, regex) {
+function handleLines(lines, filteredLines, regex) {
     const [proxyIndex, groupIndex] = findProxyGroupIndices(lines)
+    
     if (proxyIndex !== -1 && groupIndex !== -1) {
-        managedConfigLines.push(...lines.slice(proxyIndex, groupIndex + 1))
-        const filtered = filterLines(managedConfigLines, regex)
-        filteredLines.push(...filtered)
-        managedConfigLines = []
+        filteredLines.push(...filterLines(lines.slice(proxyIndex + 1, groupIndex), regex))
     } else if (proxyIndex === -1 && groupIndex !== -1) {
-        const filtered = filterLines(lines.slice(0, groupIndex), regex)
-        filteredLines.push(...filtered)
+        filteredLines.push(...filterLines(lines.slice(0, groupIndex), regex))
     } else {
-        const filtered = filterLines(lines, regex)
-        filteredLines.push(...filtered)
+        filteredLines.push(...filterLines(lines, regex))
     }
 }
