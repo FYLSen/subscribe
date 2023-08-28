@@ -13,13 +13,13 @@ Cloudflare Workers RegExp Filter is a simple Cloudflare Workers script that filt
 
 To use Cloudflare Workers RegExp Filter, you need to deploy it as a Cloudflare Worker and provide it with two query parameters:
 
-- `url`: a pipe-separated list of URLs to fetch (e.g. `url=https%3A%2F%2Fexample.com%2Ffile.txt|https%3A%2F%2Fexample.net%2Ffile.txt`)
+- `url`: a pipe-separated list of URLs to fetch (e.g. `url=https%3A%2F%2Fexample.com%2Ffile.txt%7Chttps%3A%2F%2Fexample.net%2Ffile.txt`)
 - `RegExp`: a regular expression to filter the lines of text (e.g. `RegExp=%5E%5BA-Z%5D%2B%3A%20.*$`)
 
 Here is an example URL that fetches two text files and filters the lines of text that start with a capital letter followed by a colon and a space:
 
 ```
-https://your-worker.your-account.workers.dev?url=https%3A%2F%2Fexample.com%2Ffile.txt|https%3A%2F%2Fexample.net%2Ffile.txt&RegExp=%5E%5BA-Z%5D%2B%3A%20.*$
+https://your-worker.your-account.workers.dev?url=https%3A%2F%2Fexample.com%2Ffile.txt%7Chttps%3A%2F%2Fexample.net%2Ffile.txt&RegExp=%5E%5BA-Z%5D%2B%3A%20.*$
 ```
 
 To deploy Cloudflare Workers RegExp Filter, follow these steps:

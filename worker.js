@@ -15,16 +15,19 @@ async function handleRequest(request) {
   const lineFilter = new LineFilter(regex)
   const errors = []
 
-  for(const targetUrl of targetUrls) {
-    try {
-      const response = await fetch(targetUrl, fetchOptions)
+  const results = await Promise.allSettled(targetUrls.map(targetUrl => 
+    fetch(targetUrl, fetchOptions).then(response => {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
-      await lineFilter.filterStream(reader, decoder)
-    } catch (error) {
-      errors.push(`Error fetching ${targetUrl}: ${error.message}`)
+      return lineFilter.filterStream(reader, decoder)
+    })
+  ));
+
+  results.forEach((result, idx) => {
+    if (result.status === 'rejected') {
+      errors.push(`Error fetching ${targetUrls[idx]}: ${result.reason}`)
     }
-  }
+  });
 
   if(errors.length > 0) {
     return new Response(errors.join('\n'), { status: 500 })
