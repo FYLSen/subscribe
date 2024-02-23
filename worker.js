@@ -4,9 +4,25 @@ addEventListener('fetch', event => {
 
 async function handleRequest(request) {
   const url = new URL(request.url)
-  const targetUrls = decodeURIComponent(url.searchParams.get('url')).split('|')
-  const regexPattern = decodeURIComponent(url.searchParams.get('RegExp'))
-  const regex = new RegExp(regexPattern)
+  
+  const targetUrlParam = url.searchParams.get('url')
+  if (!targetUrlParam) {
+    return new Response('No URL parameter provided', { status: 400 })
+  }
+  const targetUrls = decodeURIComponent(targetUrlParam).split('|')
+
+  const regexPatternParam = url.searchParams.get('RegExp')
+  if (!regexPatternParam) {
+    return new Response('No RegExp parameter provided', { status: 400 })
+  }
+  
+  const regexPattern = decodeURIComponent(regexPatternParam)
+  let regex;
+  try {
+    regex = new RegExp(regexPattern);
+  } catch (e) {
+    return new Response('Invalid regular expression: ' + e.message, { status: 400 })
+  }
 
   const fetchOptions = {
     headers: request.headers
@@ -17,6 +33,9 @@ async function handleRequest(request) {
 
   const results = await Promise.allSettled(targetUrls.map(targetUrl => 
     fetch(targetUrl, fetchOptions).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP status ${response.status}`)
+      }
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       return lineFilter.filterStream(reader, decoder)
@@ -29,8 +48,8 @@ async function handleRequest(request) {
     }
   });
 
-  if(errors.length > 0) {
-    return new Response(errors.join('\n'), { status: 500 })
+  if (errors.length > 0) {
+    return new Response(errors.join('\n'), { status: 502 })
   }
 
   return new Response(lineFilter.getFilteredLines().join('\n'), { status: 200 })
@@ -48,31 +67,29 @@ class LineFilter {
   }
 
   async filterStream(reader, decoder) {
-    while(true) {
-      const {
-        done,
-        value
-      } = await reader.read()
-
-      if(done) {
+    let lastChunkEndedWithNewLine = false;
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        if (!lastChunkEndedWithNewLine && this.partialLine !== '') {
+          this.handleLines([this.partialLine])
+        }
         break
       }
 
       const chunk = decoder.decode(value, { stream: true })
+      lastChunkEndedWithNewLine = chunk.endsWith('\n');
       const lines = chunk.split('\n')
 
-      if(lines.length > 1) {
-        lines[0] = this.partialLine + lines[0]
-        this.partialLine = lines.pop()
-      } else {
-        this.partialLine += lines[0]
-      }
+      lines[0] = this.partialLine + lines[0]
+      this.partialLine = lines.pop()
 
       this.handleLines(lines)
     }
 
-    if(this.partialLine !== '') {
+    if (this.partialLine) {
       this.handleLines([this.partialLine])
+      this.partialLine = ''
     }
   }
 
