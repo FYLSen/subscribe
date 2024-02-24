@@ -11,12 +11,8 @@ async function handleRequest(request) {
   const targetUrls = decodeURIComponent(targetUrlParam).split('|')
 
   const regexPatternParamBase64 = url.searchParams.get('RegExp')
-  let regexPattern;
-  if (regexPatternParamBase64) {
-    regexPattern = decodeURIComponent(atob(regexPatternParamBase64))
-  } else {
-    regexPattern = '.*'
-  }
+  let regexPattern = regexPatternParamBase64 ? atob(regexPatternParamBase64) : '.*';
+
   let regex;
   try {
     regex = new RegExp(regexPattern);
@@ -25,17 +21,16 @@ async function handleRequest(request) {
   }
 
   const fetchHeaders = new Headers({
-    'User-Agent': request.headers.get('User-Agent'),
-    'Accept': request.headers.get('Accept'),
+    'User-Agent': request.headers.get('User-Agent'), 
+    'Accept': request.headers.get('Accept'), 
   });
   const fetchOptions = {
-    headers: fetchHeaders
+    headers: fetchHeaders,
+    method: 'GET',
   }
 
   const lineFilter = new LineFilter(regex)
   const errors = []
-
-  // Execute fetch requests with limited concurrency
   const results = await fetchWithLimit(targetUrls, fetchOptions, lineFilter, errors)
 
   if (errors.length > 0) {
@@ -56,7 +51,7 @@ async function fetchWithLimit(urls, fetchOptions, lineFilter, errors, maxConcurr
           throw new Error(`HTTP status ${response.status}`)
         }
         const lines = await lineFilter.filterStream(response.body.getReader())
-        results.push(...lines)
+        results = results.concat(lines)
       } catch (e) {
         errors.push(`Error fetching ${url}: ${e.message}`)
       }
@@ -69,45 +64,39 @@ async function fetchWithLimit(urls, fetchOptions, lineFilter, errors, maxConcurr
 class LineFilter {
   constructor(regex) {
     this.regex = regex
-    this.decoder = new TextDecoder() // Reuse a single decoder instance
+    this.decoder = new TextDecoder()
+    this.proxyStart = false
   }
 
   async filterStream(reader) {
-    let linesProcessed = []
+    let results = []
     let partialLine = ''
+
     while (true) {
       const { done, value } = await reader.read()
       if (done) {
-        if (partialLine) {
-          linesProcessed = linesProcessed.concat(this.handleLine(partialLine))
+        if (partialLine && this.proxyStart) {
+          results.push(partialLine.trim());
         }
         break
       }
-      const chunk = this.decoder.decode(value, { stream: true })
-      const lines = chunk.split('\n')
-      const isChunkEndWithNewLine = chunk.endsWith('\n')
-      lines[0] = partialLine + lines[0]
-      partialLine = isChunkEndWithNewLine ? '' : lines.pop()
-      linesProcessed = linesProcessed.concat(this.handleLines(lines))
-    }
-    return linesProcessed
-  }
-  
-  handleLines(lines) {
-    let proxyStart = false
-    let groupStart = false
-    return lines.flatMap(line => {
-      const trimmed = line.trim()
-      if (trimmed === '[Proxy]') {
-        proxyStart = true
-        return []
-      } else if (trimmed === '[Proxy Group]') {
-        groupStart = true
-        return []
+      const chunk = this.decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+      lines[0] = partialLine + lines[0];
+      partialLine = chunk.endsWith('\n') ? '' : lines.pop();
+
+      for (let line of lines) {
+        line = line.trim();
+        if (line === '[Proxy Group]') {
+          break; 
+        } else if (this.proxyStart && line && !line.startsWith('#') && this.regex.test(line)) {
+          results.push(line);
+        } else if (line === '[Proxy]') {
+          this.proxyStart = true;
+        }
       }
-      const isCommentOrEmpty = trimmed === '' || trimmed.startsWith('#')
-      const isInRightSection = proxyStart && !groupStart
-      return !isCommentOrEmpty && isInRightSection && this.regex.test(trimmed) ? [trimmed] : []
-    })
+    }
+
+    return results;
   }
 }
