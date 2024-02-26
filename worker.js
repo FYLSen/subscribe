@@ -10,8 +10,8 @@ async function handleRequest(request) {
   }
   const targetUrls = decodeURIComponent(targetUrlParam).split('|');
 
-  const regexPatternParamBase64 = url.searchParams.get('RegExp');
-  let regexPattern = regexPatternParamBase64 ? atob(regexPatternParamBase64) : '.*';
+  const regexPatternParam = url.searchParams.get('RegExp');
+  let regexPattern = regexPatternParam ? decodeURIComponent(regexPatternParam) : '.*';
 
   let regex;
   try {
