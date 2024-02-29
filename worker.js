@@ -30,6 +30,8 @@ async function handleRequest(request) {
   if (results.length === 0) {
     return new Response(errors.join('\n'), { status: 502 });
   }
+  
+  return new Response(results.join('\n'), { status: 200 });
 
 } 
 
