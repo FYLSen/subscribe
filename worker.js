@@ -8,16 +8,11 @@ async function handleRequest(request) {
   if (!targetUrlParam) {
     return new Response('No URL parameter provided', { status: 400 });
   }
-  const targetUrls = decodeURIComponent(targetUrlParam).split('|');
+  const targetUrls = decodeURIComponent(targetUrlParam).split('|').filter(isUrlSafe);
 
-  const regexPatternParam = url.searchParams.get('RegExp');
-  let regexPattern = regexPatternParam ? decodeURIComponent(regexPatternParam) : '.*';
-
-  let regex;
-  try {
-    regex = new RegExp(regexPattern);
-  } catch (e) {
-    return new Response('Invalid regular expression: ' + e.message, { status: 400 });
+  const regex = createRegex(url.searchParams.get('RegExp'));
+  if (regex instanceof Response) {
+    return regex; 
   }
 
   const fetchHeaders = new Headers({
@@ -30,19 +25,28 @@ async function handleRequest(request) {
   };
 
   const lineFilter = new LineFilter(regex);
-  const errors = [];
-  const results = await fetchWithLimit(targetUrls, fetchOptions, lineFilter, errors);
+  const { results, errors } = await fetchWithLimit(targetUrls, fetchOptions, lineFilter, 5);
 
   if (results.length === 0) {
     return new Response(errors.join('\n'), { status: 502 });
   }
 
-  return new Response(results.join('\n'), { status: 200 });
+} 
+
+function createRegex(patternParam) {
+  let regexPattern = patternParam ? decodeURIComponent(patternParam) : '.*';
+  try {
+    return new RegExp(regexPattern);
+  } catch (e) {
+    return new Response('Invalid regular expression: ' + e.message, { status: 400 });
+  }
 }
 
-async function fetchWithLimit(urls, fetchOptions, lineFilter, errors, maxConcurrentRequests = 5) {
+async function fetchWithLimit(urls, fetchOptions, lineFilter, maxConcurrentRequests) {
   let results = [];
+  let errors = [];
   let index = 0;
+
   while (index < urls.length) {
     const batchUrls = urls.slice(index, index + maxConcurrentRequests);
     const batchPromises = batchUrls.map(url => {
@@ -54,13 +58,27 @@ async function fetchWithLimit(urls, fetchOptions, lineFilter, errors, maxConcurr
       }).then(lines => {
         results = results.concat(lines);
       }).catch(error => {
-        errors.push(`Error fetching ${url}: ${error.message}`);
+        errors.push('Error fetching ' + url + ' : ' + error.message); 
       });
     });
-    await Promise.all(batchPromises);
+
+    const settledPromises = await Promise.allSettled(batchPromises);
+    settledPromises.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        results = results.concat(result.value);
+      } else if (result.status === 'rejected') {
+        errors.push('Error in batch ' + (index + 1) + ': ' + result.reason);
+      }
+    });
+
     index += maxConcurrentRequests;
   }
-  return results;
+  return { results, errors };
+}
+
+function isUrlSafe(url) {
+  const urlPattern = /^https?:\/\/[^ "]+$/;
+  return urlPattern.test(url);
 }
 
 class LineFilter {
