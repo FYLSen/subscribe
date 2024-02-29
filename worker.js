@@ -33,7 +33,7 @@ async function handleRequest(request) {
   const errors = [];
   const results = await fetchWithLimit(targetUrls, fetchOptions, lineFilter, errors);
 
-  if (errors.length > 0) {
+  if (results.length === 0) {
     return new Response(errors.join('\n'), { status: 502 });
   }
 
