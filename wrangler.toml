@@ -2,3 +2,6 @@ name = "sub"
 type = "javascript"
 main = "worker.js"
 compatibility_date = "2023-07-31"
+
+[placement]
+mode = "smart"

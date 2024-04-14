@@ -3,13 +3,6 @@
   "version": "1.0.0", 
   "description": "subscribe", 
   "main": "worker.js", 
-  "dependencies": {
-    "@cloudflare/wrangler": "^1.18.0"
-  }, 
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1", 
-    "deploy": "wrangler deploy"
-  }, 
   "author": "FYLSen", 
   "license": "MIT"
 }
